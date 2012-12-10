@@ -65,29 +65,51 @@ static int find_dfu_if(libusb_device *dev,
 
 	memset(dfu_if, 0, sizeof(*dfu_if));
 	rc = libusb_get_device_descriptor(dev, &desc);
-	if (rc)
+	if (rc) {
+		if (verbose) printf("\tfind_dfu_if: no libusb_get_device_descriptor\n");
 		return rc;
+	}
+
+	if (desc.idVendor != 0x0483)
+		return 0;	// Not an ST device
+
+	if (verbose) printf("\tfind_dfu_if: found device vendor/product %04X/%04X, USB %03x, class/sub %d/%d, protocode %d, manufacturer @%d product @%d serial @%d, with %d configurations\n", desc.idVendor, desc.idProduct, desc.bcdUSB, desc.bDeviceClass, desc.bDeviceSubClass, desc.bDeviceProtocol, desc.iManufacturer, desc.iProduct, desc.iSerialNumber, desc.bNumConfigurations);
+
 	for (cfg_idx = 0; cfg_idx < desc.bNumConfigurations;
 	     cfg_idx++) {
 		rc = libusb_get_config_descriptor(dev, cfg_idx, &cfg);
-		if (rc)
+		if (rc) {
+			if (verbose) printf("\tfind_dfu_if: no libusb_get_config_descriptor for desc %d\n", cfg_idx);
 			return rc;
+		}
 		/* in some cases, noticably FreeBSD if uid != 0,
 		 * the configuration descriptors are empty */
-		if (!cfg)
+		if (!cfg) {
+			if (verbose) printf("\tfind_dfu_if: empty libusb_get_config_descriptor for desc %d\n", cfg_idx);
 			return 0;
+		}
+		if (verbose) printf("\t\tfind_dfu_if: config 0x%02X (@%d) with %d attributes, power %dmW, %d interfaces\n", cfg->bConfigurationValue, cfg->iConfiguration, cfg->bmAttributes, cfg->MaxPower*2, cfg->bNumInterfaces);
 		for (intf_idx = 0; intf_idx < cfg->bNumInterfaces;
 		     intf_idx++) {
 			uif = &cfg->interface[intf_idx];
-			if (!uif)
+			if (!uif) {
+				if (verbose) printf("\t\tfind_dfu_if: null uif in libusb_get_config_descriptor for desc %d, interface %d\n", cfg_idx, intf_idx);
 				return 0;
+			}
+			if (verbose) printf("\t\tfind_dfu_if: trying %d alt settings\n", uif->num_altsetting);
 			for (alt_idx = 0;
 			     alt_idx < uif->num_altsetting; alt_idx++) {
 				intf = &uif->altsetting[alt_idx];
-				if (!intf)
+				if (verbose) printf("\t\t\tfind_dfu_if: considering setting #%d\n", alt_idx);
+				if (!intf) {
+					if (verbose) printf("\t\t\tfind_dfu_if: null intf in libusb_get_config_descriptor for desc %d, interface %d, alt %d\n", cfg_idx, intf_idx, alt_idx);
 					return 0;
-				if (intf->bInterfaceClass == 0xfe &&
-				    intf->bInterfaceSubClass == 1) {
+				}
+				if (verbose) printf("\t\t\tinterface class/subclass %02X:%02X!\n", intf->bInterfaceClass, intf->bInterfaceSubClass);
+				switch ((intf->bInterfaceClass<<8) | intf->bInterfaceSubClass) {
+				case 0x0806:	// Storage: that's how the dso-nano appears.
+				// case 0xFFFF:	// STM32F3-Discovery boards appear this way
+				case 0xFE01:
 					dfu_if->dev = dev;
 					dfu_if->vendor = desc.idVendor;
 					dfu_if->product = desc.idProduct;
@@ -102,11 +124,19 @@ static int find_dfu_if(libusb_device *dev,
 						dfu_if->flags |= DFU_IFF_DFU;
 					else
 						dfu_if->flags &= ~DFU_IFF_DFU;
-					if (!handler)
+					if (!handler) {
+						if (verbose) printf("\tfind_dfu_if: no handler passed\n");
 						return 1;
+					}
 					rc = handler(dfu_if, v);
-					if (rc != 0)
+					if (rc != 0) {
+						if (verbose) printf("\tfind_dfu_if: handler returned %d\n", rc);
 						return rc;
+					}
+					break;
+				default:
+					//printf("\t\t\tfind_dfu_if: ignoring class/sub 0x%02X/%d\n", intf->bInterfaceClass, intf->bInterfaceSubClass);
+					break;
 				}
 			}
 		}
