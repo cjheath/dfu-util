@@ -107,7 +107,7 @@ static int find_dfu_if(libusb_device *dev,
 				}
 				if (verbose) printf("\t\t\tinterface class/subclass %02X:%02X!\n", intf->bInterfaceClass, intf->bInterfaceSubClass);
 				switch ((intf->bInterfaceClass<<8) | intf->bInterfaceSubClass) {
-				case 0x0806:	// Storage: that's how the dso-nano appears.
+				//case 0x0806:	// Storage: that's how the dso-nano appears.
 				// case 0xFFFF:	// STM32F3-Discovery boards appear this way
 				case 0xFE01:
 					dfu_if->dev = dev;
@@ -640,6 +640,7 @@ int main(int argc, char **argv)
 	int ret;
 	int dfuse_device = 0;
 	const char *dfuse_options = NULL;
+	int err_code;
 
 	memset(dif, 0, sizeof(*dif));
 	file.name = NULL;
@@ -829,9 +830,9 @@ int main(int argc, char **argv)
 		/* FIXME: check if the selected device really has only one */
 
 		printf("Claiming USB DFU Runtime Interface...\n");
-		if (libusb_claim_interface(_rt_dif.dev_handle, _rt_dif.interface) < 0) {
-			fprintf(stderr, "Cannot claim interface %d\n",
-				_rt_dif.interface);
+		if ((err_code = libusb_claim_interface(_rt_dif.dev_handle, _rt_dif.interface)) < 0) {
+			fprintf(stderr, "Cannot claim interface %d, error %d\n",
+				_rt_dif.interface, err_code);
 			exit(1);
 		}
 
@@ -986,8 +987,8 @@ dfustate:
 	}
 #endif
 	printf("Claiming USB DFU Interface...\n");
-	if (libusb_claim_interface(dif->dev_handle, dif->interface) < 0) {
-		fprintf(stderr, "Cannot claim interface\n");
+	if ((err_code = libusb_claim_interface(dif->dev_handle, dif->interface)) < 0) {
+		fprintf(stderr, "Cannot claim interface, error %d\n", err_code);
 		exit(1);
 	}
 
